@@ -14,6 +14,37 @@ It is built for long coding sessions where an assistant should do more than answ
 
 GCode is not a hosted SaaS product. It is a local developer tool intended to run on a trusted machine.
 
+## Quick Start
+
+Clone or download the repository, then run these commands from the project folder:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+install-gcode-command.cmd
+```
+
+After the graphical setup wizard finishes, open a new Command Prompt and run:
+
+```cmd
+gcode
+```
+
+Choose **GCode Terminal** if you want a keyboard-first CLI experience, or **GCode Desktop** if you want the desktop window. You can change this later with:
+
+```cmd
+gcode setup
+```
+
+For the browser UI without installing the command launcher:
+
+```powershell
+python app.py
+```
+
+Then open `http://localhost:5000`.
+
 ## What Makes It Different
 
 GCode combines a chat interface with an edit review workflow:
