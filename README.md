@@ -42,6 +42,7 @@ GCode is usable as an early local AI IDE. The main workflows are implemented and
 | Auto Pilot | Implemented |
 | Effort selector | Implemented |
 | Safe command policy | Implemented |
+| Internal vault memory | Implemented with Obsidian-style notes, chunks, search, graph, and quality endpoints |
 | Final validation | Implemented |
 | Automatic repair attempts | Implemented |
 | Windows `gcode` command launcher | Implemented |
@@ -120,6 +121,12 @@ For coding tasks, Extended and Hyper can run a staged pipeline:
 13. Trigger auto-fix when recoverable issues are found.
 
 The pipeline intentionally avoids parallel LLM calls. This keeps provider usage predictable and prevents overlapping file workers.
+
+## Internal Vault Memory
+
+GCode includes an internal Obsidian-style vault layer used for local context, project notes, chunked source summaries, contract memory, graph views, and quality checks. The vault is implemented in `obsidian_vault/` and is accessed through local Flask endpoints; it is not connected to an external hosted note service by default.
+
+The vault system is designed to help long coding sessions keep useful project context available without sending the entire repository into every prompt.
 
 ## Edit Review
 
@@ -342,6 +349,10 @@ Selected endpoints:
 | `GET /api/edits/<plan_id>` | Inspect an edit batch |
 | `GET /api/edits/<plan_id>/file?path=...` | Read a staged file |
 | `POST /api/open-folder` | Open a generated project folder |
+| `GET /api/vault/dashboard` | Internal vault overview |
+| `POST /api/vault/search` | Search local vault context |
+| `GET /api/vault/graph` | Return the vault relationship graph |
+| `GET /api/vault/quality` | Return vault quality signals |
 | `GET /v1/models` | OpenAI-compatible model listing |
 | `POST /v1/chat/completions` | OpenAI-compatible chat endpoint |
 
