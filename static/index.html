@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GCode AI IDE</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body data-tier="core">
+    <div class="app-container" id="appContainer">
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-top">
+                <div class="sidebar-item new-chat" id="newChatBtn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    <span>New chat</span>
+                </div>
+
+                <div class="sidebar-search">
+                    <div class="search-box">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="searchChats" placeholder="Search chats...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-history">
+                <div class="chat-history-title">Chats</div>
+                <div class="chat-list" id="chatList"></div>
+            </div>
+
+            <div class="sidebar-bottom">
+                <div class="sidebar-item" id="settingsBtn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <span>Settings</span>
+                </div>
+                <button id="closeSidebar" style="display:none;"></button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="top-bar">
+                <button class="toggle-sidebar" id="toggleSidebar" title="Toggle sidebar">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                </button>
+
+                <div class="model-selector">
+                    <button class="model-selector-btn" id="modelSelectorBtn">
+                        <span id="currentModelName">GaziGPT</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="model-dropdown" id="modelDropdown">
+                        <div class="model-option active" data-model="GaziGPT">
+                            <div class="model-icon">G</div>
+                            <div class="model-info">
+                                <div class="model-title">GaziGPT</div>
+                                <div class="model-desc">Fast coding and general tasks</div>
+                            </div>
+                            <div class="model-check"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+                        </div>
+                        <div class="model-option" data-model="GaziGPT Thinking">
+                            <div class="model-icon">T</div>
+                            <div class="model-info">
+                                <div class="model-title">GaziGPT Thinking</div>
+                                <div class="model-desc">Planning-focused general assistant</div>
+                            </div>
+                            <div class="model-check"></div>
+                        </div>
+                        <div class="model-option" data-model="GaziGPT Extended">
+                            <div class="model-icon">E</div>
+                            <div class="model-info">
+                                <div class="model-title">GaziGPT Extended</div>
+                                <div class="model-desc">Large coding tasks and deeper context</div>
+                            </div>
+                            <div class="model-check"></div>
+                        </div>
+                        <div class="model-option" data-model="GaziGPT Hyper">
+                            <div class="model-icon">H</div>
+                            <div class="model-info">
+                                <div class="model-title">GaziGPT Hyper</div>
+                                <div class="model-desc">Full-stack builds with the strongest route</div>
+                            </div>
+                            <div class="model-check"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="thinking-level-control" id="thinkingLevelControl" style="display:none;">
+                    <label class="thinking-label" for="thinkingLevel">Thinking <span id="thinkingLevelValue">3</span></label>
+                    <input type="range" class="thinking-slider" id="thinkingLevel" min="1" max="5" value="3">
+                </div>
+
+                <div class="tier-indicator" id="tierIndicator" title="GCode v2 active">
+                    <span class="tier-dot" id="tierDot"></span>
+                    <span class="tier-label" id="tierLabel">v2</span>
+                </div>
+            </div>
+
+            <div class="empty-state" id="emptyState">
+                <h1 class="empty-title">What should we build?</h1>
+            </div>
+
+            <div class="chat-messages" id="chatMessages" style="display:none;"></div>
+
+            <div class="input-area" id="inputArea">
+                <div class="input-container">
+                    <div class="plan-control-bar">
+                        <button class="plan-mode-pill auto-pilot-pill" id="autoPilotToggle" type="button">Auto Pilot: Off</button>
+                        <button class="plan-mode-pill" id="autoAcceptToggle" type="button">Auto accept: Off</button>
+                        <label class="security-select-label" for="modelEffort">Effort</label>
+                        <select id="modelEffort" class="security-select effort-select">
+                            <option value="no">no</option>
+                            <option value="low">low</option>
+                            <option value="medium" selected>medium</option>
+                            <option value="high">high</option>
+                            <option value="xhigh">xhigh</option>
+                        </select>
+                        <label class="security-select-label" for="securityLevel">Security</label>
+                        <select id="securityLevel" class="security-select">
+                            <option value="ask_each_step">Ask every step</option>
+                            <option value="safe" selected>Safe</option>
+                            <option value="full_access">Full access</option>
+                        </select>
+                    </div>
+                    <div class="edit-preview-panel" id="editPreviewPanel" style="display:none;"></div>
+                    <div class="chat-input-wrapper">
+                        <button class="attach-btn" id="attachBtn" title="Attach file">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                        </button>
+                        <textarea id="messageInput" placeholder="Ask GCode anything. Use @ to mention files or tools." rows="1"></textarea>
+
+                        <div class="input-actions-right">
+                            <button class="stop-btn" id="stopBtn" title="Stop" style="display:none;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                            </button>
+                            <button class="send-btn" id="sendBtn" title="Send">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="file-preview" id="filePreview" style="display:none;">
+                        <div class="file-preview-image" id="filePreviewImage" style="display:none;">
+                            <img id="filePreviewThumb" src="" alt="Preview">
+                        </div>
+                        <span class="file-preview-name" id="filePreviewName"></span>
+                        <button class="file-preview-remove" id="filePreviewRemove" title="Remove">x</button>
+                    </div>
+
+                    <input type="file" id="fileInput" style="display:none">
+                    <div style="display:none;">
+                        <span id="charCount"></span>
+                        <select id="imageRatio"><option value="1:1"></option></select>
+                        <audio id="ttsAudio"></audio>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal-content">
+            <h3 class="modal-title">Delete Chat</h3>
+            <p class="modal-text">This chat will be permanently deleted. Are you sure?</p>
+            <div class="modal-actions">
+                <button class="modal-btn modal-btn-cancel" id="cancelDelete">Cancel</button>
+                <button class="modal-btn modal-btn-delete" id="confirmDelete">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3 class="modal-title">Settings</h3>
+                <button class="modal-close" id="closeSettings">x</button>
+            </div>
+            <div class="settings-body">
+                <div class="settings-group">
+                    <label class="settings-label">Font size: <span id="fontSizeValue">14</span>px</label>
+                    <input type="range" id="settingsFontSize" class="settings-range" min="12" max="20" value="14">
+                </div>
+                <div class="settings-group settings-toggle-group">
+                    <label class="settings-label">Send with Enter</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="settingsEnterSend" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="settings-group" style="display:none;">
+                    <select id="settingsVoice"><option></option></select>
+                </div>
+                <div class="settings-group">
+                    <button class="settings-save-btn" id="saveSettingsBtn">Save</button>
+                </div>
+                <div class="settings-group settings-danger-zone">
+                    <button class="settings-danger-btn" id="clearAllChatsBtn">Clear All Chats</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
