@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local app data
+vault_data/
+static/uploads/*
+!static/uploads/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated smoke-test projects
+hyper-routing-check/
+perfect-kanban-check/
+
+# Temporary migration/patch scripts
+add_guideline.py
+fix_*.py
+patch*.py
+update_*.py
+
+# Old root-level generated leftovers
+/app.js
+/index.html
+/patch.js
+/styles.css
+/package.json
+/gazigpt_benchmark.png
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
