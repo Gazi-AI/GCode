@@ -27,11 +27,11 @@ def launch_web():
     return _run_python_file("app.py")
 
 
-def launch_terminal():
+def launch_terminal(args=None):
     os.chdir(ROOT)
     from terminal_ui import main
 
-    return main()
+    return main(args or [])
 
 
 def print_help():
@@ -41,6 +41,9 @@ def print_help():
     print("  gcode                 Open your configured default interface")
     print("  gcode setup           Run the setup wizard again")
     print("  gcode terminal        Open GCode Terminal once")
+    print("  gcode terminal --resume <id>")
+    print("                        Resume a saved terminal session")
+    print("  gcode resume <id>    Shortcut for terminal resume")
     print("  gcode desktop         Open GCode Desktop once")
     print("  gcode web             Start the browser web server")
     print("  gcode set terminal    Make Terminal the default")
@@ -74,7 +77,13 @@ def main(argv=None):
         return 0
 
     if command == "terminal":
-        return launch_terminal() or 0
+        return launch_terminal(argv[1:]) or 0
+
+    if command == "resume":
+        if len(argv) < 2:
+            print("Usage: gcode resume <session-id>")
+            return 2
+        return launch_terminal(["--resume", argv[1]]) or 0
 
     if command == "desktop":
         return launch_desktop()
