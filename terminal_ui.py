@@ -8,6 +8,8 @@ import subprocess
 import sys
 import textwrap
 import time
+import json
+import uuid
 from pathlib import Path
 
 from gcode_config import choose_default_interface, get_default_interface, load_config, set_default_interface
@@ -15,6 +17,8 @@ from gcode_config import choose_default_interface, get_default_interface, load_c
 
 ROOT = Path(__file__).resolve().parent
 TERMINAL_UPLOAD_DIR = ROOT / "vault_data" / "terminal_uploads"
+TERMINAL_SESSION_STORE_PATH = ROOT / "vault_data" / "terminal_sessions.json"
+WEB_CHAT_STORE_PATH = ROOT / "vault_data" / "chats.json"
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -52,11 +56,14 @@ SLASH_COMMANDS = [
     ("model", "Manage terminal model configuration"),
     ("models", "Show available GCode model tiers"),
     ("mode", "Show the saved default interface"),
+    ("new", "Start a new terminal chat session"),
     ("permissions", "Show workspace trust and command policy"),
     ("pwd", "Show the current project directory"),
     ("quit", "Exit the CLI"),
     ("read", "Preview a text file inside the project"),
+    ("resume", "Resume a saved session. Usage: /resume <session-id>"),
     ("run", "Run a safe local command from the current directory"),
+    ("sessions", "List saved terminal and web chat sessions"),
     ("setmode", "Change the saved default interface"),
     ("setup", "Change what plain 'gcode' opens"),
     ("stats", "Check session stats. Usage: /stats [session|model|tools]"),
@@ -124,6 +131,148 @@ def terminal_size(default=(120, 32)):
 
 def strip_ansi(text):
     return ANSI_RE.sub("", str(text))
+
+
+def now_iso():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def new_session_id():
+    return "t_" + uuid.uuid4().hex[:12]
+
+
+def terminal_message_title(messages):
+    for message in messages or []:
+        if message.get("role") == "user":
+            content = str(message.get("content", "")).strip().replace("\n", " ")
+            if content:
+                return content[:60] + ("..." if len(content) > 60 else "")
+    return "New terminal session"
+
+
+def clean_messages(messages):
+    clean = []
+    for message in messages or []:
+        role = message.get("role")
+        content = message.get("content", "")
+        if role in {"user", "assistant", "system"} and isinstance(content, str):
+            clean.append({"role": role, "content": content})
+    return clean
+
+
+def load_terminal_store():
+    if not TERMINAL_SESSION_STORE_PATH.exists():
+        return {"version": 1, "current_session_id": None, "sessions": {}}
+    try:
+        data = json.loads(TERMINAL_SESSION_STORE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {"version": 1, "current_session_id": None, "sessions": {}}
+    sessions = data.get("sessions", {}) if isinstance(data, dict) else {}
+    if not isinstance(sessions, dict):
+        sessions = {}
+    current_session_id = data.get("current_session_id") if isinstance(data, dict) else None
+    if current_session_id not in sessions:
+        current_session_id = None
+    return {"version": 1, "current_session_id": current_session_id, "sessions": sessions}
+
+
+def save_terminal_store(store):
+    TERMINAL_SESSION_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    clean_store = {
+        "version": 1,
+        "current_session_id": store.get("current_session_id"),
+        "sessions": store.get("sessions", {}),
+    }
+    tmp = TERMINAL_SESSION_STORE_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(clean_store, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(TERMINAL_SESSION_STORE_PATH)
+
+
+def save_terminal_session(session_id, messages):
+    messages = clean_messages(messages)
+    if not messages:
+        return False
+    store = load_terminal_store()
+    sessions = store["sessions"]
+    existing = sessions.get(session_id, {})
+    timestamp = now_iso()
+    sessions[session_id] = {
+        "id": session_id,
+        "kind": "terminal",
+        "title": terminal_message_title(messages),
+        "created_at": existing.get("created_at") or timestamp,
+        "updated_at": timestamp,
+        "messages": messages,
+    }
+    store["current_session_id"] = session_id
+    save_terminal_store(store)
+    return True
+
+
+def load_web_chat_store():
+    if not WEB_CHAT_STORE_PATH.exists():
+        return {"chats": {}}
+    try:
+        data = json.loads(WEB_CHAT_STORE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {"chats": {}}
+    chats = data.get("chats", {}) if isinstance(data, dict) else {}
+    return {"chats": chats if isinstance(chats, dict) else {}}
+
+
+def get_saved_session(session_id):
+    store = load_terminal_store()
+    session = store["sessions"].get(session_id)
+    if session:
+        return "terminal", session
+    chat = load_web_chat_store()["chats"].get(session_id)
+    if chat:
+        return "web", chat
+    return None, None
+
+
+def list_saved_sessions(limit=20):
+    rows = []
+    for session in load_terminal_store()["sessions"].values():
+        rows.append({
+            "id": session.get("id", ""),
+            "kind": "terminal",
+            "title": session.get("title") or terminal_message_title(session.get("messages", [])),
+            "updated_at": session.get("updated_at") or session.get("created_at") or "",
+            "count": len(session.get("messages", [])),
+        })
+    for chat in load_web_chat_store()["chats"].values():
+        rows.append({
+            "id": chat.get("id", ""),
+            "kind": "web",
+            "title": chat.get("title") or terminal_message_title(chat.get("messages", [])),
+            "updated_at": chat.get("updated_at") or chat.get("created_at") or "",
+            "count": len(chat.get("messages", [])),
+        })
+    rows.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
+    return rows[:limit]
+
+
+def print_sessions(limit=20):
+    rows = list_saved_sessions(limit=limit)
+    print(color("Saved sessions", C.bold + C.cyan))
+    if not rows:
+        print("  No saved sessions yet.")
+        print("")
+        return
+    for row in rows:
+        session_id = str(row["id"])
+        title = str(row["title"] or "Untitled").replace("\n", " ")
+        if len(title) > 52:
+            title = title[:49] + "..."
+        print(
+            f"  {color(session_id.ljust(16), C.green)} "
+            f"{color(row['kind'].ljust(8), C.magenta)} "
+            f"{str(row['count']).rjust(3)} msg  {title}"
+        )
+    print("")
+    print("  Resume with: /resume <session-id>")
+    print("")
 
 
 def print_box(title, body, border=C.yellow, text=C.text if hasattr(C, "text") else C.reset):
@@ -341,59 +490,24 @@ def read_terminal_input(cwd):
             render_input_bar(buffer, rel)
 
 
-def header_lines(width, cwd, messages):
+def header_lines(width, cwd, messages, session_id="", selected_model="core"):
     user = getpass.getuser()
     default_mode = get_default_interface(load_config()) or "not configured"
     root_label = str(ROOT)
     if len(root_label) > width - 28:
         root_label = "..." + root_label[-(width - 31):]
-
-    card_width = max(68, width - 4)
-    body = (
-        "Welcome back to GCode. This terminal keeps the input bar pinned at the bottom, "
-        "while the conversation and command output scroll above it. Use slash commands "
-        "for local actions or type a normal message for AI chat."
-    )
-    wrapped = textwrap.wrap(body, width=card_width - 34)
-    while len(wrapped) < 4:
-        wrapped.append("")
-
-    left = [
-        "GCode Terminal",
-        "Welcome back!",
-        f"Default: {default_mode}",
-        f"Root: {root_label}",
-    ]
-    def fit(text, size):
-        text = str(text)
-        return text if len(text) <= size else text[: max(0, size - 3)] + "..."
-
+    model_label = TERMINAL_MODEL_OPTIONS.get(selected_model, TERMINAL_MODEL_OPTIONS["core"])[0]
+    session_text = session_id or "unsaved"
     lines = [
-        color("  GCode Terminal", C.bold + C.green) + color(f"  Ready ({user})", C.bold) + color("  /status", C.gray),
-        color("  Signed in with Local Workspace", C.bold) + color("  /auth", C.gray),
-        color(f"  Plan: GCode AI IDE  default={default_mode}", C.bold) + color("  /setup", C.gray),
+        color("GCode Terminal", C.bold + C.green)
+        + color(f"  Ready ({user})", C.bold)
+        + color(f"  session={session_text}", C.gray),
+        color(f"Root: {root_label}", C.gray),
+        color(f"Model: {model_label}", C.magenta)
+        + color(f"  default={default_mode}", C.gray)
+        + color("  /sessions  /resume <id>  /help", C.gray),
         "",
-        color("+" + "-" * (card_width - 2) + "+", C.green),
     ]
-
-    divider = 26
-    title = "What's new"
-    for index in range(4):
-        left_text = fit(left[index] if index < len(left) else "", divider - 3)
-        right_text = fit(title if index == 0 else wrapped[index - 1], card_width - divider - 4)
-        row = (
-            "| "
-            + left_text.center(divider - 3)
-            + " | "
-            + right_text.ljust(card_width - divider - 4)
-            + " |"
-        )
-        lines.append(color(row[:divider + 1], C.green) + row[divider + 1:])
-    lines.append(color("+" + "-" * (card_width - 2) + "+", C.green))
-    lines.append("")
-    lines.append(color("[i]", C.cyan + C.bold) + " " + color("Project root is trusted for this local workspace.", C.yellow))
-    lines.append(color("[i]", C.cyan + C.bold) + " " + color("Use /help for shortcuts, /desktop for the GUI, and /exit to quit.", C.yellow))
-    lines.append("")
     return lines
 
 
@@ -410,7 +524,7 @@ def wrap_history_lines(lines, width):
 
 
 class TerminalTUI:
-    def __init__(self):
+    def __init__(self, resume_session_id=None):
         self.cwd = ROOT
         self.messages = []
         self.agent = None
@@ -418,10 +532,8 @@ class TerminalTUI:
         self.cursor = 0
         self.image_attachments = {}
         self.selected_model = "core"
-        self.history = [
-            "Update successful. The new terminal interface is active.",
-            "Type /help for shortcuts, /permissions for trust details, or a normal message to chat.",
-        ]
+        self.current_session_id = new_session_id()
+        self.history = []
         self.scroll_offset = 0
         self.running = True
         self.last_width = 0
@@ -429,6 +541,12 @@ class TerminalTUI:
         self.last_suggestion_count = 0
         self.input_row = 1
         self.footer_row = 1
+        if resume_session_id:
+            self.resume_session(resume_session_id, announce=False)
+        else:
+            self.append(f"New session: {self.current_session_id}")
+            self.append("Use /sessions to list chats, /resume <id> to continue one, or /help for commands.")
+            self.append("")
 
     def append(self, text=""):
         for line in str(text).splitlines() or [""]:
@@ -439,6 +557,50 @@ class TerminalTUI:
         self.append(f"{title}")
         for line in textwrap.wrap(str(body), width=100):
             self.append(f"  {line}")
+        self.append("")
+
+    def save_current_session(self):
+        return save_terminal_session(self.current_session_id, self.messages)
+
+    def rebuild_history_from_messages(self, intro=""):
+        self.history = []
+        if intro:
+            self.append(intro)
+            self.append("")
+        for message in self.messages:
+            role = message.get("role")
+            content = str(message.get("content", ""))
+            if role == "user":
+                self.append(f"> {content}")
+            elif role == "assistant":
+                self.append_block("GCode", content)
+
+    def resume_session(self, session_id, announce=True):
+        kind, session = get_saved_session(session_id)
+        if not session:
+            if announce:
+                self.append(f"Session not found: {session_id}")
+            return False
+        self.current_session_id = session_id if kind == "terminal" else new_session_id()
+        self.messages = clean_messages(session.get("messages", []))
+        if kind == "web":
+            self.save_current_session()
+            intro = f"Imported web chat {session_id} into terminal session {self.current_session_id}."
+        else:
+            intro = f"Resumed session {session_id}."
+        if announce:
+            self.rebuild_history_from_messages(intro)
+        else:
+            self.rebuild_history_from_messages(intro)
+        return True
+
+    def new_session(self):
+        self.save_current_session()
+        self.current_session_id = new_session_id()
+        self.messages = []
+        self.history = []
+        self.append(f"New session: {self.current_session_id}")
+        self.append("Use /sessions to list saved chats.")
         self.append("")
 
     def marker_spans(self):
@@ -707,7 +869,7 @@ class TerminalTUI:
 
     def render(self, status=""):
         width, height = terminal_size()
-        head = header_lines(width, self.cwd, self.messages)
+        head = header_lines(width, self.cwd, self.messages, self.current_session_id, self.selected_model)
         suggestions = self.slash_suggestion_lines(width)
         self.last_suggestion_count = len(suggestions)
         input_height = 4 + len(suggestions)
@@ -780,6 +942,22 @@ class TerminalTUI:
 
     def capture_command(self, text):
         lowered = text.lower().strip()
+        if lowered == "/sessions":
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                print_sessions()
+            self.append(output.getvalue().strip())
+            return False
+        if lowered == "/new":
+            self.new_session()
+            return False
+        if lowered == "/resume" or lowered.startswith("/resume "):
+            arg = text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else ""
+            if not arg:
+                self.append("Usage: /resume <session-id>")
+                return False
+            self.resume_session(arg)
+            return False
         if lowered == "/model" or lowered.startswith("/model "):
             arg = text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else ""
             self.handle_model_command(arg)
@@ -825,6 +1003,7 @@ class TerminalTUI:
             self.agent = get_agent()
 
         self.messages.append({"role": "user", "content": text})
+        self.save_current_session()
         self.append("Thinking...")
         self.render("Thinking...")
         try:
@@ -845,11 +1024,14 @@ class TerminalTUI:
         self.append_block("GCode", answer)
         if tool_results:
             self.append(f"{len(tool_results)} tool result(s) received.")
+        self.save_current_session()
 
     def run(self):
         enable_ansi()
         if os.name == "nt":
             os.system(f"title GCode Terminal")
+        sys.stdout.write("\033[?1049h\033[?25l")
+        sys.stdout.flush()
         self.render()
         try:
             while self.running:
@@ -905,7 +1087,14 @@ class TerminalTUI:
                     self.insert_text(ch)
                     self.refresh_input()
         finally:
-            sys.stdout.write("\033[?25h\033[0m\n")
+            saved = self.save_current_session()
+            session_id = self.current_session_id
+            sys.stdout.write("\033[?25h\033[0m\033[?1049l")
+            if saved:
+                sys.stdout.write(f"\nGCode Terminal session saved: {session_id}\n")
+                sys.stdout.write(f"Resume with: gcode terminal --resume {session_id}\n")
+            else:
+                sys.stdout.write("\nGCode Terminal closed. No chat messages to save.\n")
             sys.stdout.flush()
 
 
@@ -1067,6 +1256,22 @@ def handle_command(raw, cwd, messages):
         else:
             del messages[:-8]
             print(color(f"Compressed terminal context: kept 8 of {before} turns.", C.green))
+    elif command == "/sessions":
+        print_sessions()
+    elif command == "/resume":
+        session_id = arg.strip()
+        if not session_id:
+            print(color("Usage: /resume <session-id>", C.yellow))
+        else:
+            _kind, session = get_saved_session(session_id)
+            if not session:
+                print(color(f"Session not found: {session_id}", C.red))
+            else:
+                messages[:] = clean_messages(session.get("messages", []))
+                print(color(f"Resumed {session_id}. Loaded {len(messages)} message(s).", C.green))
+    elif command == "/new":
+        messages[:] = []
+        print(color("Started a new terminal chat session.", C.green))
     elif command == "/directory":
         print_directory(cwd)
     elif command == "/footer":
@@ -1124,15 +1329,34 @@ def handle_command(raw, cwd, messages):
     return cwd, False
 
 
-def main():
+def parse_resume_arg(argv):
+    argv = list(argv or [])
+    for index, value in enumerate(argv):
+        lowered = str(value).lower()
+        if lowered in {"--resume", "-r", "resume"} and index + 1 < len(argv):
+            return argv[index + 1]
+        if lowered.startswith("--resume="):
+            return value.split("=", 1)[1]
+    return None
+
+
+def main(argv=None):
+    resume_session_id = parse_resume_arg(argv)
     if os.name == "nt" and sys.stdin.isatty():
-        TerminalTUI().run()
+        TerminalTUI(resume_session_id=resume_session_id).run()
         return 0
 
     print_banner()
     cwd = ROOT
     messages = []
     agent = None
+    if resume_session_id:
+        _kind, session = get_saved_session(resume_session_id)
+        if session:
+            messages[:] = clean_messages(session.get("messages", []))
+            print(color(f"Resumed {resume_session_id}. Loaded {len(messages)} message(s).", C.green))
+        else:
+            print(color(f"Session not found: {resume_session_id}", C.red))
 
     while True:
         try:
@@ -1171,7 +1395,11 @@ def main():
         if tool_results:
             print(color(f"{len(tool_results)} tool result(s) received.", C.gray))
 
+    session_id = resume_session_id or new_session_id()
+    saved = save_terminal_session(session_id, messages)
     print(color("Goodbye from GCode Terminal.", C.magenta))
+    if saved:
+        print(color(f"Resume with: gcode terminal --resume {session_id}", C.green))
     return 0
 
 
